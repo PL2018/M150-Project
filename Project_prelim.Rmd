@@ -34,3 +34,4 @@ boxplot(time~raceth,data=aids, ylab="time to AIDS diagnosis or death", names=c("
 ```
 
 
+Note: To view rendered HTML within GitHub, add http://htmlpreview.github.io/? in front of link
