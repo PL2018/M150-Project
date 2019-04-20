@@ -9,6 +9,7 @@ knitr::opts_chunk$set(message=FALSE, warning=FALSE, fig.height=4, fig.width=5,
 library(tidyverse) 
 library(broom) 
 library(ggplot2)
+library(GGally)
 ```
 
 ## R Markdown
@@ -22,19 +23,40 @@ aids # to view data
 
 
 ```{r}
-boxplot(time~sex,data=aids, ylab="time to AIDS diagnosis or death", names=c("male", "female"))
+# boxplot(time~sex,data=aids, ylab="time to AIDS diagnosis or death", names=c("male", "female"))
 ```
 
 ```{r}
-hist(aids$karnof,ylab="freq")
+# hist(aids$karnof,ylab="freq")
 ```
 
 ```{r}
-boxplot(time~raceth,data=aids, ylab="time to AIDS diagnosis or death", names=c("white", "black", "his", "asian, pacific", "amer native"))
+# boxplot(time~raceth,data=aids, ylab="time to AIDS diagnosis or death", names=c("white", "black", "his", "asian, pacific", "amer native"))
+```
+
+```{r}
+aids %>%  
+  mutate( c.f = factor(censor), tx.f = factor(tx), sex.f = factor(sex), iv.f = factor(ivdrug)) %>%
+  select(time, c.f, tx.f, sex.f, iv.f, karnof) %>%ggpairs(aes(color=sex.f))
+```
+
+```{r}
+# library(GGally)
+
+# ggpairs(aids)
 ```
 
 
-Note: To view rendered HTML within GitHub, add http://htmlpreview.github.io/? in front of link
-Testing again 
+4-18-19 Starting on "something new":
 
-2:14am - gaah!
+I will investigate PH assumption (cox.zph). This will help us see which variables are "qualified" to be used in the model, at least as is, w/o transformations. Something challenging is that there are groupings that are fine, and there are others that violate PH, complicating the model building. In class we talked about how we can transform variables, segment, and/or incorporate the change over time into the model. I'm still going over class notes and also the text to solidify my understanding.
+
+```{r}
+cox.zph(coxph(Surv(time,censor) ~ sex, data=aids))
+```
+
+P-vlaue 0.142, very large, don't reject H0, no evidence of violation of PH. Sex is cleared as var. for model.
+
+Next: do cox.zph for each var. that is added to model
+
+Note to self: cannot find function cox.zph when "Clear R and run all chunks," but works when chunk run individualy.
