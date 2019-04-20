@@ -60,3 +60,4 @@ P-vlaue 0.142, very large, don't reject H0, no evidence of violation of PH. Sex 
 Next: do cox.zph for each var. that is added to model
 
 Note to self: cannot find function cox.zph when "Clear R and run all chunks," but works when chunk run individualy.
+Note2: cannot publish/knit since running from "Run" button above cannot find cox.zph
