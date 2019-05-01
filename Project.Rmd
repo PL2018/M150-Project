@@ -1,0 +1,221 @@
+---
+title: "Final Project: AIDS data"
+subtitle: "Additional topic: Proportional Hazards assumption"
+author: "Pollyanna Leung" 
+date: "Draft: Monday, April 29, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, fig.height=4, fig.width=5, 
+                      fig.align = "center", echo = TRUE)
+library(tidyverse) 
+library(broom) 
+library(tidylog)
+library(survival)
+library(survminer)
+library(ggplot2)
+library(GGally)
+```
+
+## EDA
+
+4-8-19 Preliminary EDA
+
+```{r}
+# aids <- readr::read_csv("http://pages.pomona.edu/~jsh04747/courses/math150/AIDSdata.csv",na=c("NA", "*"))
+aids <- readr::read_csv("~/Google Drive/2019Spring/Methods in Biostats/Project info/AIDSdata.csv", na=c("NA", "*"))
+# head(aids,n=5) # to confirm data is read-in properly
+```
+
+```{r}
+aids <- aids %>%  
+  mutate(cd.f = factor(censor_d), c.f = factor(censor), tx.f = factor(tx), sex.f = factor(sex), iv.f = factor(ivdrug), strat2.f = factor(strat2))
+# head(aids, n=5)
+```
+
+```{r}
+# for time, c.f # uncomment for real report
+# aids   %>%
+#   select(time, c.f, tx.f, sex.f, iv.f, karnof, strat2.f, cd4, priorzdv )  %>%
+#   ggpairs(aes(color=sex.f))
+```
+
+```{r}
+# for time_d, cd.f # uncomment for real report
+# aids   %>%
+#   select(time_d, cd.f, tx.f, sex.f, iv.f, karnof, strat2.f, cd4, priorzdv )  %>%
+#   ggpairs(aes(color=sex.f))
+```
+ 
+The aim of this study is to use CoxPH model to accurately model the survival data of this aids dataset. The argument is that the CoxPH model can be used to accurately determine patient outcome (survival data) based on whether the pateint has been on treatment regimen or not. In creating models for this data, additional variables will be included in model as needed for as accurate predictions as possible. The underlying hypothesis of this proposal is that treatment with IDV (vs treatment with just ADV or d4T and 3TC) is a decent predictor of patient outcome. The implications of this study is that treatment (with IDV) is necessary for longer life in AIDS patients. Several subtle variables may be able to further delineate patient outcome. This is important in medicine as each individual's body is different and subtle differences are often overlooked in the selection and application of a therapy regimen. 
+
+Limitations: a,b,c were time-dependent variables, etc.
+
+
+
+## PH Assumption
+
+First, before model building, proportionality has to be examined to ensure the PH assumption is not violated, as required of Cox PH models. If violated, the MLE of the coefficients will not be a suitable estimation, and and subsequent confidence (error margins, p-values) will not be truly at the default-set 95% level, not allowing the Cox PH model to be a suitable one for the data.
+
+Because the goal of this study is to find a model that best predicts patient outcome with treatment, proportionality will be examined with respect to the explanatory variable, treatment (`tx`)
+
+```{r}
+aids.surv <- survfit(Surv(time+1,censor) ~ tx, data=aids, conf.type="plain")
+survminer::ggsurvplot(aids.surv, conf.int=TRUE, censor=F, fun="cloglog") + ggtitle("Overall")
+```
+
+```{r}
+ph.time.tx <- cox.zph(coxph(Surv(time,censor) ~ tx, data=aids))
+ph.time.tx # PH time_tx p: 0.544
+```
+
+From the log-log plot of KM curves, the lines for treatment (blue, 1= includes IDV) vs control (red, 0= without IDV) are quite parallel for the most part. The test for PH violation produces an insignificant result, with a very large p-value of 0.544, failing to give evidence to reject null hypothesis and to claim PH violation. 
+Thus, the Cox PH model is cleared to be used to predict treatment on patient outcomes.
+
+```{r}
+ggcoxzph(ph.time.tx) # Schoenfeld Indiv Test time_tx p: 0.5444
+```
+
+## Cox PH model
+
+#### Response and censor variable: time, censor
+
+```{r}
+coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + strat2 + cd4 + priorzdv, 
+      data = aids) # --> take out priorzdv
+```
+
+```{r}
+coxph(Surv(time,censor) ~ tx + karnof + cd4, data=aids)$loglik #
+```
+
+```{r}
+coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + strat2 + cd4, 
+      data = aids) # --> take out strat2
+```
+
+Note: simple EDA plots of untransformed data may not always be useful (indicative of usefulness of var. in CoxPH model)
+
+```{r}
+coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + cd4, 
+      data = aids) # --> take out sex, ivdrug
+```
+
+```{r}
+coxph(Surv(time,censor) ~ tx + karnof + cd4, data = aids) #
+```
+
+```{r}
+coxph(Surv(time,censor) ~ tx + karnof + cd4, data=aids)$loglik #
+```
+
+
+By a series of steps that involved eliminating variables with highest insignificance values, except treatment, by looking at the p-value from the likelihood ratio test (LRT) each time explanatory variables to confirm/rebuke appropriateness of said variables, the final model for time, using censor variable, is with tx, karnof, and cd4 in an additive model. All variables in this final model was significant, especially karnof and cd4 (less than order of -5), and the overall p-value of the model obtained from the LRT is also very significant (less than order of -16). 
+
+estimates: tx -0.68070957 karnof -0.05742240 cd4 -0.01462171
+
+p-values: tx 0.00787 karnof 3.18e-05 cd4 1.97e-06
+
+Likelihood ratio test=75.21 on 3 df, p=3.267e-16, n= 851, number of events= 69 
+
+
+
+Note: Explain coefficients: 
+
+One 
+
+
+#### Response and censor variable: time_d, censor_d
+
+```{r}
+coxph(Surv(time_d,censor_d) ~ tx + sex + ivdrug + karnof + strat2 + cd4 + priorzdv, data = aids) # !
+```
+
+```{r}
+coxph(Surv(time_d,censor_d) ~ tx + sex + karnof + ivdrug + cd4 + priorzdv, data = aids) # !
+```
+
+```{r}
+coxph(Surv(time_d,censor_d) ~ tx + karnof + cd4 + priorzdv, data = aids) # !
+```
+
+```{r}
+coxph(Surv(time_d,censor_d) ~ tx + karnof + cd4, data = aids) # !
+```
+
+
+
+
+## PH Assumption - More
+
+```{r}
+aids.surv <- survfit(Surv(time+1,censor) ~ karnof, data=aids, conf.type="plain")
+survminer::ggsurvplot(aids.surv, conf.int=TRUE, censor=F, fun="cloglog") + ggtitle("Overall")
+```
+
+```{r}
+ph.time.karnof <- cox.zph(coxph(Surv(time,censor) ~ karnof, data=aids))
+ph.time.karnof # PH time_karnof p: 0.92
+```
+
+```{r}
+ggcoxzph(ph.time.karnof) # Schoenfeld Indiv Test time_karnof p: 0.9201
+```
+
+```{r}
+# categorize cd4 into 0-100, 100-200, 200-300, 300-400
+aids <- aids %>%  
+  mutate(cd4.f=0) %>% # create cd4.f col with default value 0
+  mutate(cd4.f = replace(cd4.f, cd4<=400, 400) ) %>%
+  mutate(cd4.f = replace(cd4.f, cd4<=300, 300) ) %>%
+  mutate(cd4.f = replace(cd4.f, cd4<=200, 200) ) %>%
+  mutate(cd4.f = replace(cd4.f, cd4<=100 , 100) ) 
+```
+
+```{r}
+aids.surv <- survfit(Surv(time+1,censor) ~ cd4.f, data=aids, conf.type="plain")
+survminer::ggsurvplot(aids.surv, conf.int=TRUE, censor=F, fun="cloglog") + ggtitle("Overall")
+```
+
+```{r}
+ph.time.cd4 <- cox.zph(coxph(Surv(time,censor) ~ cd4, data=aids)) 
+ph.time.cd4 # cd4.f PH p-val 0.207
+```
+
+```{r}
+ggcoxzph(ph.time.cd4) # Schoenfeld Indiv Test time_cd4 p: 0.2073
+```
+
+
+
+Can we get more accurate model without regard to treatment?
+
+```{r}
+coxph(Surv(time_d,censor_d) ~  karnof + cd4, data = aids) # censor_d w tx 6.67e-06
+```
+
+(Then do $loglik for significance of tx to model (for death model))
+
+
+
+For time_d, censor_d:
+
+Note: strat2 x cd4
+
+Note: do LRT on tx itself, to see if it's necessary
+
+Note: then do model with just best pedictors, not necessarily including tx --> if better model, what does it say about treatment? DO people just have better survival without treatment?
+
+Note: do cox.zph on just tx var. for model that finds best predictor used to predict outcome of diff tx grps
+Then, do cox.zph on every var. for model that simply predicts outcome
+
+Q: Code for schoenford residuals?
+
+
+We can't do MLE with time-dependent covariate. (Explain).
+Maybe explain a little bit abt Schoenford resid. --> show violations of trends over t (see below - correlation of resid. should be 0)
+Test is done with correlation of residuals.
+Correlation of residuals should be 0 (no time dependency, resid. should look scattered).
+
+
