@@ -1,14 +1,15 @@
 ---
 title: "Final Project: AIDS data"
-subtitle: "Additional topic: Proportional Hazards assumption"
+subtitle: "Special topic: Proportional Hazards assumption"
 author: "Pollyanna Leung" 
-date: "Draft: Monday, April 29, 2019"
+date: "May 4th, 2019"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message=FALSE, warning=FALSE, fig.height=4, fig.width=5, 
                       fig.align = "center", echo = TRUE)
+library(knitr)
 library(tidyverse) 
 library(broom) 
 library(tidylog)
@@ -18,204 +19,205 @@ library(ggplot2)
 library(GGally)
 ```
 
-## EDA
+## Introduction
 
-4-8-19 Preliminary EDA
+The aim of this study is to use CoxPH model to accurately model the survival data of the dataset from Hammer et al. 1997, which contains survival data of HIV-affected individuals with respect to treatment with iudinavir (IDV) and treatment with just nucleoside analogues, zidovudine (ZDV), stavudine (d4T), and lamivudine (3TC). This was important data at the time because protease IDV, a protease inhibitor, was a trendy topic for HIV treatment. It was shown that IDV had the potential to to inhibit HIV-proteases, thus helping to slow down the progression of HIV in further weakening the immune system of an HIV-affected individual (Hammer et al. 1997). Nucleoside analogues, which are antiviral agents commonly used to fight against HIV, had been as the standard treatment (Joly et al. 1995). Being able to slow the onset of HIV's effects on the body (immune system, the primary target of HIV) is key to preventing or slowing onset of AIDS-related prognosis and/or death.
+
+In this project, since I'd like to associate the survival time of patients with predictor variable treatmet (with and without IDV), the argument is that the CoxPH model can be used to accurately determine patient outcome (survival data) based on whether the patient has been on treatment regimen or not. The inherent hypothesis is that treatment 1 (with IDV) and control (without IDV) is important for determining the hazard of the patient (AIDS-related event or death). This would be helpful for future HIV-affected individuals in deciding whether to include IDV in treatment planning. 
+
+In creating models for this data, additional variables will be included in model as needed for as accurate predictions as possible. The underlying proposal is that treatment with IDV (vs treatment with just ADV or d4T and 3TC) is a decent predictor of patient outcome. The implications of this study is that treatment (with IDV) is necessary for longer life in AIDS patients. Several subtle variables may be able to further delineate patient outcome. This is important in medicine as each individual's body is different and subtle differences are often overlooked in the selection and application of a therapy regimen. 
+
+
+
+## Methods: Special topic: PH Assumption
+
+One of the assumptions of the CoxPH model is that the regression effect beta is constant over time. So, proportionality has to be examined to ensure the PH assumption is not violated on covariates to ensure that the Cox PH model is an appropriate model for the data with respect to the covariates. If PH assumption is violated, the MLE of the coefficients will not be a suitable estimation, and subsequent confidence (error margins, p-values) will not be truly at the default-set 95% level which. MLE is finding values of coefficients such that you maximize seeing your data, or finding a model that best fits the "histogram" of your data. The importance for a lack of time-dependence of covariates on hazard ratio can be seen in how MLE is calculated:
+
+P(ith individual dies at t_i | death @ t_i) = P(ith indiv. dies @ t_i) / P(at least one death @ t_i)
+
+= hazard at t_i / sum of all patients at risk @ t_i
+
+... after several more algebraic/calculus steps, including cancelling out h_0(t), we get:
+
+L(beta) = a product of indiv. densities e^beta*x_0 / sum of e^beta*x_k, such that k is the time >= the time of present indiv. data point that is being considered.
+
+Because the denominator already accounts for time by considering the rest of people still at risk, including censored observations, if we need to incorporate a time variable in the numerator to consider the change in hazard with respect to time, the likelihood value will change, thus impacting the value of the coefficient that is ultimately selected as the value that maximizes likelihood. 
+
+It has been demonstrated that having a time-dependence in the model will change MLE values inappropriately. In order to test for proportinality of hazards, there are 3 ways: (1) using ln(-ln(survival curve)) vs time; (2) looking at scaled Schoenfeld residuals vs time plots; and (3) using cox.zph() in R, which gives a p-value as a result of testing proportional hazard assumption.
+
+(1) Using ln(-ln(survival curve)) vs time:
+
+Proportional hazards can be assessed through using the survival curve, S(t). This can be seen through deriving the ln(-ln(S(t))) expression:
+
+step 1: h1(t) = h0(t)*exp(beta)
+
+step 2: h0(t) = h0(t)*exp(beta*x_i), such that x_i = {1 if treat, 0 if control}
+
+step 3: S0(t) = exp(integral of h0(t) over time)
+
+step 4: S1(t) = exp(integral of h1(t) over time) = exp(-exp(beta) * integral of h0(t) over time)
+
+step 5: S1(t) = [S0(t)]^exp(beta)
+
+step 6: ln(S1(t)) = exp(beta) * ln(S0(t)), then after switching negative signs around...
+
+step 7: ln(-ln(S1(t)) = beta + ln(-ln(S0(t))), 
+
+        such that beta is difference between ln(-ln(S1(t))) and ln(-ln(S0(t)))
+        
+If PH was violated, then in step 3, the integral would also have to incorporate a function of time, say g(t). Consequently, in step 5, g(t) would complicate the derviation since S1(t) $\neq$ S0(t)*exp(beta). Lastly, in step 7, beta, which is the beta retrieved from MLE in CoxPH modelling, would not equal the difference between ln(-ln(S1(t))) and ln(-ln(S0(t))). This implies that the difference between the two ln(-ln(survival curves)) would be changing, not constant at beta, which can be seen in the plot by examining parallelnes of the two curves. 
+
+Note: Examining because these plots consist of transformations of the survival curves over time, we can use these plots to visualize changes in the data (non-parallelness) over time. This is helpful to get a rough idea of any particular deviations from PH happening at whichever times. In contrast, cox.zph() performs a test which outputs a p-value, which is a great option when wanting to find out if any deviations from PH is significant or not. Thus, we first start with the visualization by using transformed survival curves.
+
+Now that it has been demonstrated that there has to be PH in order to see parallel lines with ln(-ln(S1(t))) and ln(-ln(S0(t))), we will use fun="cloglog" in the R survminer package to visualize these curves. Because the goal of this study is to find a model that best predicts patient outcome with treatment, proportionality will first be examined with respect to the explanatory variable, treatment (`tx`). We want to know if treatment's effect on hazard depends on time.
 
 ```{r}
-# aids <- readr::read_csv("http://pages.pomona.edu/~jsh04747/courses/math150/AIDSdata.csv",na=c("NA", "*"))
+# Reading in data
 aids <- readr::read_csv("~/Google Drive/2019Spring/Methods in Biostats/Project info/AIDSdata.csv", na=c("NA", "*"))
-# head(aids,n=5) # to confirm data is read-in properly
+head(aids,n=5) # to confirm data is read-in properly
 ```
 
 ```{r}
 aids <- aids %>%  
   mutate(cd.f = factor(censor_d), c.f = factor(censor), tx.f = factor(tx), sex.f = factor(sex), iv.f = factor(ivdrug), strat2.f = factor(strat2))
-# head(aids, n=5)
+head(aids,n=5) # to confirm data is read-in properly
 ```
 
-```{r}
-# for time, c.f # uncomment for real report
-# aids   %>%
-#   select(time, c.f, tx.f, sex.f, iv.f, karnof, strat2.f, cd4, priorzdv )  %>%
-#   ggpairs(aes(color=sex.f))
-```
-
-```{r}
-# for time_d, cd.f # uncomment for real report
-# aids   %>%
-#   select(time_d, cd.f, tx.f, sex.f, iv.f, karnof, strat2.f, cd4, priorzdv )  %>%
-#   ggpairs(aes(color=sex.f))
-```
- 
-The aim of this study is to use CoxPH model to accurately model the survival data of this aids dataset. The argument is that the CoxPH model can be used to accurately determine patient outcome (survival data) based on whether the pateint has been on treatment regimen or not. In creating models for this data, additional variables will be included in model as needed for as accurate predictions as possible. The underlying hypothesis of this proposal is that treatment with IDV (vs treatment with just ADV or d4T and 3TC) is a decent predictor of patient outcome. The implications of this study is that treatment (with IDV) is necessary for longer life in AIDS patients. Several subtle variables may be able to further delineate patient outcome. This is important in medicine as each individual's body is different and subtle differences are often overlooked in the selection and application of a therapy regimen. 
-
-Limitations: a,b,c were time-dependent variables, etc.
-
-
-
-## PH Assumption
-
-First, before model building, proportionality has to be examined to ensure the PH assumption is not violated, as required of Cox PH models. If violated, the MLE of the coefficients will not be a suitable estimation, and and subsequent confidence (error margins, p-values) will not be truly at the default-set 95% level, not allowing the Cox PH model to be a suitable one for the data.
-
-Because the goal of this study is to find a model that best predicts patient outcome with treatment, proportionality will be examined with respect to the explanatory variable, treatment (`tx`)
 
 ```{r}
 aids.surv <- survfit(Surv(time+1,censor) ~ tx, data=aids, conf.type="plain")
 survminer::ggsurvplot(aids.surv, conf.int=TRUE, censor=F, fun="cloglog") + ggtitle("Overall")
 ```
 
+In the log-log plot of KM curves, the lines for treatment (blue, 1= includes IDV) vs control (red, 0= without IDV) are quite parallel for the most part, indicating that there is most likely no deviation from PH with respect to covariate treatment (tx). In order see if any small deviations from PH is significant or not, we would have to perform testing, which cox.zph() does. Since cox.zph() performs regression testing on Schoenfeld residuals, we will go over Schoenfeld residuals first.
+
+(2) Looking at scaled Schoenfeld residuals vs time plots:
+
+Schoenfeld residuals plots the residuals of the covariates themselves over time in order to see if there is a dependence of the covariate on time. 
+
+resid_i = covariate_i - Sum of W_k*covariate_k, such that k: t_k >= t_i, i being the ith person being examined. 
+
+The weight (W in the equation) is the probability that any particular member fails (at that specific time_i), given that ones does, or the survival likelihood. By multiplying W by the covariate values (for each k), we are essentially subtracting the weighted average of the covariate values for members of k (those still at risk), such that we're comparing the covariate value of the ith member to the covariate values of those still at risk (STHDA 2019). Provided that PH holds true and beta is the truly the regression coefficient for the specific covariate being examined, residuals should be uncorrelated and have mean 0. These residuals are scaled in the plot to those who are still at risk/died at time_i.
+
+To interpret Schoenfeld residuals, a lack of pattern of residuals with time, an indicator of a non-significant relationship between residuals and time, suggests that PH assumption is not violated for that specific covariate. This is because the effect of treatment on hazard does not change over time. The p-value that accompanies the graph is testing the correlation of residuals with time, such that a large p-value would indicate lack of correlation, and a small p-value would indicate a correlation between residuals and time. 
+
 ```{r}
 ph.time.tx <- cox.zph(coxph(Surv(time,censor) ~ tx, data=aids))
-ph.time.tx # PH time_tx p: 0.544
-```
-
-From the log-log plot of KM curves, the lines for treatment (blue, 1= includes IDV) vs control (red, 0= without IDV) are quite parallel for the most part. The test for PH violation produces an insignificant result, with a very large p-value of 0.544, failing to give evidence to reject null hypothesis and to claim PH violation. 
-Thus, the Cox PH model is cleared to be used to predict treatment on patient outcomes.
-
-```{r}
 ggcoxzph(ph.time.tx) # Schoenfeld Indiv Test time_tx p: 0.5444
 ```
 
-## Cox PH model
+Schoenfeld residual plot of covariate treatment tx over time shows constancy with time. It decreases and increases alternatively, so overall, there seems to be a lack of pattern with respect to time. The solid line, which is the regression line, is approximately at 0 over time, suggesting that there is no time-dependency of covariate treatment. PH Assumption seems to be supported for covariate tx (treatment). 
+
+The 3rd way to examine PH assumption is to call the cox.zph() function. This test is simply done to examine PH assumption by finally testing the significance of any pattern of the covariate with time by outputting a p-value, with which we can reject or fail to reject null - that there is no dependence of covariate on time. 
+Cox.zph tests the PH assumption by correlating the scaled Schoenfeld residuals with transformed time. 
+
+```{r}
+ph.time.tx # PH time_tx p: 0.544
+```
+
+When cox.zph is called on covariate treatment tx with response variable `time` (and `censor`), which counts both AIDS-related events (such as AIDS diagnosis) and death, the test for PH violation produces an insignificant result,  a very large p-value of 0.544, failing to give evidence to reject null hypothesis and to claim PH violation. 
+
+Thus, the Cox PH model is cleared to be used to predict patient outcomes with covariate treatment.
+
+
+## Results: Cox PH model
 
 #### Response and censor variable: time, censor
 
 ```{r}
-coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + strat2 + cd4 + priorzdv, 
-      data = aids) # --> take out priorzdv
+coxph.init <- coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + strat2 + cd4 + priorzdv + raceth, 
+      data = aids) 
+coxph.init
 ```
 
 ```{r}
-coxph(Surv(time,censor) ~ tx + karnof + cd4, data=aids)$loglik #
+coxph.final <- coxph(Surv(time,censor) ~ tx + karnof + cd4, data = aids) 
+# p-values: tx 0.00787 karnof 3.18e-05 cd4 1.97e-06, LRT=75.21 on 3 df, p=3.267e-16
+coxph.final %>% tidy
 ```
 
 ```{r}
-coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + strat2 + cd4, 
-      data = aids) # --> take out strat2
-```
-
-Note: simple EDA plots of untransformed data may not always be useful (indicative of usefulness of var. in CoxPH model)
-
-```{r}
-coxph(Surv(time,censor) ~ tx + sex + ivdrug + karnof + cd4, 
-      data = aids) # --> take out sex, ivdrug
+G = 2* (coxph.init$loglik[2] - coxph.final$loglik[2])
+pval = 1 - pchisq(G,2)
+c(G, pval) # 
 ```
 
 ```{r}
-coxph(Surv(time,censor) ~ tx + karnof + cd4, data = aids) #
+library(pec)
+pec::cindex(coxph(Surv(time,censor) ~ tx + karnof + cd4, data = aids, x=TRUE) )
 ```
+
+A Cox PH model with tx + karnof + cd4 is a sufficiently good model for hazard of AIDS-related event and/or death. Cindex is 77.6, or 77.6% concordant pairs which predicted longer survival time for longer-lived patients. The generation of a good CoxPH model supported my hypothesis that CoxPH model can be used to accurately predict hazard of HIV-affected individuals using other predictor variables, karnof and cd4. I first started with a model that contained many explanatory variables, tx + sex + ivdrug + karnof + strat2 + cd4 + priorzdv. By a series of steps that involved eliminating variables with highest insignificance values, except treatment, by looking at the p-value from the likelihood ratio test (LRT), the final model for `time`, using `censor` variable, which accounts for AIDS-related events and death, is with tx, karnof, and cd4 in an additive model. All variables in this final model was significant, as indicated by p-values from MLE of each coefficient, especially karnof and cd4 (less than order of -5), and the overall p-value of the model is also very significant (less than order of -16). LRT comparing initial and final model to assess the importance of variables sex + ivdrug + strat2 + priorzdv to the final model outputted a G value of 3.8, with corresponding p value of 0.15, indicating that there is no significant evidence for rejecting null - that these variables are not important to the model. Thus, LRT confirmed that these variables can be excluded. 
+
+Fitting CoxPH model to aids-related events and death data generated the following: 
+
+b1 (tx) = -0.68070957, b2 (karnof) = -0.05742240, b3 (cd4) = -0.01462171, such that:
+
+Hazard function h1(t) = ho(t)*exp(b1x1i + b2x2i + b3x3i)
+
+Using these coefficients for tx, karno, and cd4, hazard ratios can be calculated (calculations are included in Appendix at bottom of document), from which we can make the following statements:  
+
+Overall effect of treatment 1 (with IDV):
+
+An HIV-affected individual with treatment 1 has 0.506 times the hazard (of having AIDS-related event or death) than an HIV-affected individual with treatment 0. Confidence interval (CI) of hazard ratio is (0.307, 0.835), which doesn't include 1, suggesting that treatment with protease inhibitor indinavir (IDV) should be included for HIV-affected individuals, since hazard is decreased by a large factor.
+
+Effect of karno score:
+
+Karno score indicates healthiness of individual, with the higher the score, the healthier the person. Regardless of treatment, when comparing the karno scores 100 and 80, which is the upper-limit and lower-limit of karno measurements in this study, the hazard of a person with karno 100 is 0.317 times the hazard of a person with karno 80. This also means that a person with lower karno (80 compared to 100) has 3.15 times the hazard of a person with karno 100. This indicates the starting health status of the HIV-affected individual is important to the outcome (Aids-related event or death). 
+
+Effect of treatment with respect to karno score:
+
+The next logical step for the person with karno 80 would be to do something to increase their survival likelihood and decrease their hazard. So, if an HIV-affected individual with karno 80 went onto treatment with IDV (tx 1), their hazard then becomes 1.6 times the hazard of an HIV-affected individual with karno 100 (on control treatment, that still hasn't gone on treatment 1). This decrease in multiplicative factor in hazard is important to consider! Treatment 1 decreases hazard of HIV-affected individual by multiplicative factor of 0.5, so an HIV-affected individual with karno 80 that initially has a relative hazard of 3.15x the hazard of an HIV-affected individual with karno 100 decreased to a relative hazard half of that, 1.6x, compared to the hazard of an HIV-affected individual with karno 100. This suggests that HIV-affected individual who is relatively unhealth, or low karno scores, should definitely consider treatment 1 (with IDV).
+
+Effect of cd4 measurements (cells/milliliter):
+
+CD4 count essentially measures the number of immune cells in the body. The higher the count, the stronger the immune system of the individual, the healtheir the individual is. Typically, cd4 counts reside between 500-1500 for healthy individuals. Below 200 is an indicator of a dangerously weak immune system. 
+
+From the model, with every single unit increase in cd4 count (+1 cell/mL), hazard changes by multiplicative factor of 0.985, with CI (0.98, 0.99), which doesn't include 1, indciating that there is a significant decrease in hazard with a higher cd4 count even by 1 unit (cell/mL). However, it's not a lot; 0.99 is still quite close to 1. However, when comparing physiologically relevant cd4 counts, 400 (right below healthy threshold) and 200 (considered dangerously low immune system), an HIV-affected individual with cd4 count 400 cells/mL has 0.0537 times the hazard of an HIV-affected individual with cd4 count 200, quite a significant (multiplicative) decrease in hazard! This also means an HIV-affected individual with cd4 200 has 18.6 times the hazard of an HIV-affected individual with cd4 400. This makes sense since AIDS is directly related to the strength of the immune system, so a person with a stronger immune system would have better prognosis regarding AIDS-related events or death. 
+
+Effect of treatment with respect to cd4 measurements:
+
+Consistent with the effect of treatment we see with respect to karno score, putting the person with cd4 200 on treatment 1 decreases hazard ratio by half, from 18.6 to 9.4, when compared to HIV-affected individual with cd4 400 still on control treatment (without IDV). This suggests that when considering cd4 counts of HIV patients, especially with those whose immune system is already very weak, perhaps from lack of recovery from previous HIV-related treatment or an exisiting autoimmune disorder, being put on treatment 1 (with IDV) will make a significant impact on decreasing hazard, or likelihood of AIDS-related events or death.
+
+#### Revisiting the PH assumption
+
+Since a CoxPH model with covariates tx + karnof + cd4 has been made and determined to be a sufficient model in predicting hazard (AIDS-related events and/or death), we need to assess the PH assumption for the covariates that has not been tested for hazard proportionality: karnof and cd4. 
 
 ```{r}
-coxph(Surv(time,censor) ~ tx + karnof + cd4, data=aids)$loglik #
+ph.time.tx.karnof.cd4 <- cox.zph(coxph(Surv(time,censor) ~ tx + karnof+ cd4, data=aids))
+ph.time.tx.karnof.cd4 # PH time_tx p: 0.544
 ```
 
-
-By a series of steps that involved eliminating variables with highest insignificance values, except treatment, by looking at the p-value from the likelihood ratio test (LRT) each time explanatory variables to confirm/rebuke appropriateness of said variables, the final model for time, using censor variable, is with tx, karnof, and cd4 in an additive model. All variables in this final model was significant, especially karnof and cd4 (less than order of -5), and the overall p-value of the model obtained from the LRT is also very significant (less than order of -16). 
-
-estimates: tx -0.68070957 karnof -0.05742240 cd4 -0.01462171
-
-p-values: tx 0.00787 karnof 3.18e-05 cd4 1.97e-06
-
-Likelihood ratio test=75.21 on 3 df, p=3.267e-16, n= 851, number of events= 69 
+Running cox.zph() on tx+karnof+cd4, our generating CoxPH model, produced p-values larger than 0.05, both for individual coefficients and the global model, suggesting that there is no evidence to reject null and to claim PH violation. Thus, using CoxPH model for predicting hazard from predictors tx + karnof + cd4 is appropriate since the PH assumption holds true. 
 
 
+#### Discussion
 
-Note: Explain coefficients: 
+It has been shown that using the CoxPH model proposed for AIDS-related events and deaths, treatment 1 with IDV significantly makes an impact on patient outcome (with respect to AIDS diagnosis and/or death). The predictors that were used to investigate this IDV impact on patient outcome are the covariates included in the model, cd4 and karnof score. This is consistent with resesarch on IDV since the publication of Hammer et al. 1997. IDV has been foudn to inhibit cell-cycle progression in lymphocytes, which is useful for HIV-affected individuals with infected lymphocytes (immune system cells) (Chavan et al. 2001). 
 
-One 
+The original paper of this data, Hammer et al. 1997, specified that subjects in this study were HIV-affected individuals previously treated with zidovudine, a nucleoside analogue, which was one of the then (1997) standard HIV treatment. Thus, the results of this project can be generalized to HIV-affected individuals previously treated with the then-standard treatment, nucleoside analogues (zidovudine). This project probed into whether treatment with HIV-protease inhibitor IDV should be included by examining its impact upon inclusion in treatment on HIV-affected individuals previously treated with nucleoside analogue zidovudine with consideration towards physiological measures shown to be important in the CoxPH model used in this project, cd4 and karnof score.
 
+Because this data came from a randomized experiment and the CoxPH model used in this project included treatment as a covariate, conclusions can be made about causation. One way to interpret this model in this project is using predictors cd4 and karnof to assist in comparing impacts of treatment with IDV on patients with different cd4 and karnof profiles, treatment with IDV can be said to have caused significant differences in hazard based on patient outcome data from Hammer et al. 1997. It is important to note that Hammer et al. 1997 randomized subjects based on stratified cd4 counts. Although past studies have shown that cd4 counts is directly related to immune system health and thus outcomse in affected individuals with immune system-related diseases, such as AIDS and/or HIV (Ickovics et al. 2001), this CoxPH model in this project showed that karnof score can also be a good indicator of patient outcome for HIV-affected individuals with respect to HIV treatment with IDV. Thus, conclusions about causation can be made, but keeping in mind that only cd4 counts were accounted for in the randomization process. 
 
-#### Response and censor variable: time_d, censor_d
+Because hazard is a form of survival likelihood measure, this conclusion would be helpful for future HIV-affected individuals considering treatment options with or without IDV. Even though the conclusions from this project state that treatment with IDV makes a significant impact on hazard, whether a future, individual patient dies (or has an AIDS diagnosis) cannot be said. It's important to note that using a CoxPH model, only hazard can be concluded, not whether the actual event will occur or not. Thus, any decisions future patients make will contain a risk to some extent in trusting this hazard model. 
 
-```{r}
-coxph(Surv(time_d,censor_d) ~ tx + sex + ivdrug + karnof + strat2 + cd4 + priorzdv, data = aids) # !
-```
+If given more time for this project, an improvement would be to calculate CIs for the hazard ratios that used multiple coefficients. This would be tell us more about the confidence with which we can make these claims about impact on hazard.  
 
-```{r}
-coxph(Surv(time_d,censor_d) ~ tx + sex + karnof + ivdrug + cd4 + priorzdv, data = aids) # !
-```
+Limitations of this project include that a model was not made for death-only events. This would consist of running coxph() on Surv(time_d, censor_d). Death is a subset of AIDS-related events with usually patients who eventually die having a unique disease pathology, so it might be possible that different covariates are important for predicting death-only. If a model were made for death-only, a comparison between the two CoxPH models prediciting AIDS-related events and death, and just death, would require an assesment of the quality of each of the models. This would call for an "independent" measure of model assessment - for example, these would not be nested models, so LRT would probably not be a good option. The c index function in the R package PEC would be appropriate, which essentially determines the proportion of all patient pairs (in which at least one of whom died) in which the predictions and outcomes are concordant. Concordance is determined by the predicted survival time being longer for the patient who lived longer. 
 
-```{r}
-coxph(Surv(time_d,censor_d) ~ tx + karnof + cd4 + priorzdv, data = aids) # !
-```
-
-```{r}
-coxph(Surv(time_d,censor_d) ~ tx + karnof + cd4, data = aids) # !
-```
+Another limitation of this project is that certain variables that should be categorized, such as raceth, were not. It does not make sense to make raceth numerical since one race is not necessarily related to another, which is what would happen in model-building if imported as is. In this project, due to time constraints, raceth was not categorized.  It has been known that certain races may have certain abilities, such as African Americans having the mutation for sickle cell that is also protective against malaria, a disease endemic to Africa (Solovieff et al. 2011). To consider the impact race can have on patient outcome, if given more time for this project, raceth should be inputted as a categorical variable.
 
 
+References: 
 
+Solovieff, N., Hartley, S. W., Baldwin, C. T., Klings, E. S., Gladwin, M. T., VI, J. G. T., ... & Sebastiani, P. (2011). Ancestry of African Americans with sickle cell disease. Blood Cells, Molecules, and Diseases, 47(1), 41-45.
 
-## PH Assumption - More
+Ickovics, J. R., Hamburger, M. E., Vlahov, D., Schoenbaum, E. E., Schuman, P., Boland, R. J., ... & HIV Epidemiology Research Study Group. (2001). Mortality, CD4 cell count decline, and depressive symptoms among HIV-seropositive women: longitudinal analysis from the HIV Epidemiology Research Study. Jama, 285(11), 1466-1474.
 
-```{r}
-aids.surv <- survfit(Surv(time+1,censor) ~ karnof, data=aids, conf.type="plain")
-survminer::ggsurvplot(aids.surv, conf.int=TRUE, censor=F, fun="cloglog") + ggtitle("Overall")
-```
+Hammer, S. M., Squires, K. E., Hughes, M. D., Grimes, J. M., Demeter, L. M., Currier, J. S., ... & Chodakewitz, J. A. (1997). A controlled trial of two nucleoside analogues plus indinavir in persons with human immunodeficiency virus infection and CD4 cell counts of 200 per cubic millimeter or less. New England Journal of Medicine, 337(11), 725-733.
 
-```{r}
-ph.time.karnof <- cox.zph(coxph(Surv(time,censor) ~ karnof, data=aids))
-ph.time.karnof # PH time_karnof p: 0.92
-```
+Chavan, S., Kodoth, S., Pahwa, R., & Pahwa, S. (2001). The HIV protease inhibitor Indinavir inhibits cell-cycle progression in vitro in lymphocytes of HIV-infected and uninfected individuals. Blood, 98(2), 383-389.
 
-```{r}
-ggcoxzph(ph.time.karnof) # Schoenfeld Indiv Test time_karnof p: 0.9201
-```
+Joly, V., & Yeni, P. (1995). Treatment of HIV infection with nucleoside analogs: present status. Presse medicale (Paris, France: 1983), 24(2), 103-110.
 
-```{r}
-# categorize cd4 into 0-100, 100-200, 200-300, 300-400
-aids <- aids %>%  
-  mutate(cd4.f=0) %>% # create cd4.f col with default value 0
-  mutate(cd4.f = replace(cd4.f, cd4<=400, 400) ) %>%
-  mutate(cd4.f = replace(cd4.f, cd4<=300, 300) ) %>%
-  mutate(cd4.f = replace(cd4.f, cd4<=200, 200) ) %>%
-  mutate(cd4.f = replace(cd4.f, cd4<=100 , 100) ) 
-```
-
-```{r}
-aids.surv <- survfit(Surv(time+1,censor) ~ cd4.f, data=aids, conf.type="plain")
-survminer::ggsurvplot(aids.surv, conf.int=TRUE, censor=F, fun="cloglog") + ggtitle("Overall")
-```
-
-```{r}
-ph.time.cd4 <- cox.zph(coxph(Surv(time,censor) ~ cd4, data=aids)) 
-ph.time.cd4 # cd4.f PH p-val 0.207
-```
-
-```{r}
-ggcoxzph(ph.time.cd4) # Schoenfeld Indiv Test time_cd4 p: 0.2073
-```
-
-
-
-Can we get more accurate model without regard to treatment?
-
-```{r}
-coxph(Surv(time_d,censor_d) ~  karnof + cd4, data = aids) # censor_d w tx 6.67e-06
-```
-
-(Then do $loglik for significance of tx to model (for death model))
-
-
-
-For time_d, censor_d:
-
-Note: strat2 x cd4
-
-Note: do LRT on tx itself, to see if it's necessary
-
-Note: then do model with just best pedictors, not necessarily including tx --> if better model, what does it say about treatment? DO people just have better survival without treatment?
-
-Note: do cox.zph on just tx var. for model that finds best predictor used to predict outcome of diff tx grps
-Then, do cox.zph on every var. for model that simply predicts outcome
-
-Q: Code for schoenford residuals?
-
-
-We can't do MLE with time-dependent covariate. (Explain).
-Maybe explain a little bit abt Schoenford resid. --> show violations of trends over t (see below - correlation of resid. should be 0)
-Test is done with correlation of residuals.
-Correlation of residuals should be 0 (no time dependency, resid. should look scattered).
-
-
+STHDA (2019). Cox Model Assumptions. Statistical tools for high-throughput data analysis. Retrieved from http://www.sthda.com/english/wiki/cox-model-assumptions
